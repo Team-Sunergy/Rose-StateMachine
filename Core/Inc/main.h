@@ -79,6 +79,8 @@ void Error_Handler(void);
 #define pedalADC_GPIO_Port GPIOA
 #define regenADC_Pin GPIO_PIN_2
 #define regenADC_GPIO_Port GPIOA
+#define brakeLightEnable_Pin GPIO_PIN_3
+#define brakeLightEnable_GPIO_Port GPIOA
 #define pedalDAC_Pin GPIO_PIN_4
 #define pedalDAC_GPIO_Port GPIOA
 #define regenDAC_Pin GPIO_PIN_5

@@ -1077,6 +1077,9 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(OTG_FS_PowerSwitchOn_GPIO_Port, OTG_FS_PowerSwitchOn_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(brakeLightEnable_GPIO_Port, brakeLightEnable_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, LD4_Pin|LD3_Pin|LD6_Pin|spareOutput2_Pin
                           |chargeIndicator_Pin|NA2_Pin, GPIO_PIN_RESET);
 
@@ -1115,6 +1118,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_EVT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : brakeLightEnable_Pin */
+  GPIO_InitStruct.Pin = brakeLightEnable_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(brakeLightEnable_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SPI1_MISO_Pin */
   GPIO_InitStruct.Pin = SPI1_MISO_Pin;
