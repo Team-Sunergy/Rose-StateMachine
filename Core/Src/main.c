@@ -66,12 +66,20 @@ DAC_HandleTypeDef hdac;
 /* USER CODE BEGIN PV */
 
 // const for the Throttle Pedal
-const int MIN_ADC = 630;   //630
-const int MAX_ADC = 3900; //3900
-const int MIN_DAC = 0;
-const int MAX_DAC = 4095;
+const int THROTTLE_MIN_ADC = 630;
+const int THROTTLE_MAX_ADC = 3900;
+const int THROTTLE_MIN_DAC = 0;
+const int THROTTLE_MAX_DAC = 4095;
+
+const int REGEN_MIN_ADC = 0;
+const int REGEN_MAX_ADC = 4095;
+const int REGEN_MIN_DAC = 0;
+const int REGEN_MAX_DAC = 4095;
 // Const for AUX undervoltage protection
 const int UNDERVOLTAGE = 3210;			// 21 Volts, experimental, 12 bit @ 3.3VCC,
+
+const int BRAKE_POINT = 1000; // Sets the point where Regen activates Brake Lights.
+
 
 // sets current state
 static State_t currentState = OFF;
@@ -129,6 +137,7 @@ GPIO_PinState o_chargeIndicator;
 GPIO_PinState o_faultIndicator;
 GPIO_PinState o_hvContactor;
 GPIO_PinState o_preChargeRelay;
+GPIO_PinState o_brakeIndEn;
 
 uint16_t o_pedalDAC=0;
 uint16_t i_pedalADC=0;
@@ -171,6 +180,8 @@ void updatePedal(void);
 void updateAuxADC(void);
 void updateRegen(void);
 void faultBlinker(void);
+void brakeActives(uint16_t analogIn);
+
 
 /* USER CODE END PFP */
 
@@ -235,6 +246,7 @@ int main(void)
 	  i_chargeEnable 		= !HAL_GPIO_ReadPin(chargeEnablePort, chargeEnable);
 	  i_disChargeEnable 	= !HAL_GPIO_ReadPin(disChargeEnablePort, disChargeEnable);
 	  i_brakeSwitchInput 	= HAL_GPIO_ReadPin(brakeSwitchInputPort, brakeSwitchInput);
+
 
 
 	switch(currentState) {
@@ -452,6 +464,8 @@ void on_state(void){		// State 4 = DRIVING
 	updatePedal();
 
 	updateRegen();
+	brakeActives(i_regenADC);
+
 
 
 	// Go to FAULT_TEMP state because we might want to charge if disChargeEnable goes 0
@@ -653,8 +667,8 @@ void debugMonitor(void)
 	//stateBuffer[240] inBuffer[300], outBuffer[240], outBufferOld[240,;
 	//old unused  String arrays ^^^
 
-	sprintf(analogBuffer, "\rPedalADC : %d PedalDAC: %d RegenADC: %d RegenDAC: %d\n",
-			i_pedalADC, o_pedalDAC, i_regenADC, o_regenDAC);
+	sprintf(analogBuffer, "\rState:%d PedalADC:%d PedalDAC:%d RegenADC:%d RegenDAC:%d\n",
+			currentState,i_pedalADC, o_pedalDAC, i_regenADC, o_regenDAC);
 
 	sprintf(outBuffer, "\rS: %d hvDCe=%d AuxDCd=%d FltIn=%d PChg=%d KeyI=%d KeyA=%d DisCe=%d KSw=%d CHGe=%d CHGc=%d ADC=%d Code=%d\n",
 			currentState, o_hvDCDCEnable, o_auxDCDCDisable,
@@ -672,7 +686,9 @@ void debugMonitor(void)
 //	sprintf(outBuffer,"\rS: %d Discharge=%d KillSwitch= %d\n",
 //			currentState, i_disChargeEnable, i_killSwitch);
 
-	CDC_Transmit_FS((uint8_t*)outBuffer, strlen((char*)outBuffer));
+	//CDC_Transmit_FS((uint8_t*)outBuffer, strlen((char*)outBuffer));
+	CDC_Transmit_FS((uint8_t*)analogBuffer, strlen((char*)analogBuffer));
+
 
 
 }
@@ -683,20 +699,25 @@ void updatePedal(void){
     HAL_DAC_Start(&hdac, DAC_CHANNEL_1);
 
     // Get input from PA0
-    	i_pedalADC = HAL_ADC_GetValue(&hadc1);
+	i_pedalADC = HAL_ADC_GetValue(&hadc1);
 
-    	//o_DAC = ( (i_ADC - min_ADC) * (max_DAC - min_DAC) )/(max_ADC - min_ADC)+ min_DAC
-    	//o_DAC = max_DAC - o_DAC;
 
-    	// map value_adc to the range 740-4095 to value dac range to 4095
-    	// vaule_dac starts high then goes low(4095-->0)
-        o_pedalDAC = ((i_pedalADC - MIN_ADC) * (MAX_DAC- MIN_DAC)) / (MAX_ADC - MIN_ADC) + MIN_DAC;
-        //invert value
-        o_pedalDAC = MAX_DAC - o_pedalDAC;
+	int Throttle_DAC_temp = ((i_pedalADC - THROTTLE_MIN_ADC) * (THROTTLE_MAX_DAC - THROTTLE_MIN_DAC))
+			/ (THROTTLE_MAX_ADC - THROTTLE_MIN_ADC) + THROTTLE_MIN_DAC;
 
-        // Outputting DAC value to PA4
-        HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, o_pedalDAC);
-        HAL_Delay(1);
+	// Clamp DAC value to max range
+	if (Throttle_DAC_temp > THROTTLE_MAX_DAC) {
+		Throttle_DAC_temp = THROTTLE_MAX_DAC;
+	} else if (Throttle_DAC_temp < THROTTLE_MIN_DAC) {
+		Throttle_DAC_temp = THROTTLE_MIN_DAC;
+	}
+
+	//invert value
+	o_pedalDAC = THROTTLE_MAX_DAC - Throttle_DAC_temp;
+
+	// Outputting DAC value to PA4
+	HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, o_pedalDAC);
+	HAL_Delay(1);
 }
 
 void updateRegen(void) {
@@ -704,14 +725,22 @@ void updateRegen(void) {
             HAL_ADC_Start(&hadc2);
             HAL_DAC_Start(&hdac, DAC_CHANNEL_2);
 
-            	i_regenADC = HAL_ADC_GetValue(&hadc2);
+			i_regenADC = HAL_ADC_GetValue(&hadc2);
 
-                // Map value_adc to the range 740-4095 to value_dac range 0-4095
-                o_regenDAC = i_regenADC;
-                //throttle_pos = (uint32_t)((value_dac / 4096) * 100); // Truncate to integer
-                // Output DAC value to PA
-                HAL_DAC_SetValue(&hdac, DAC_CHANNEL_2, DAC_ALIGN_12B_R, o_regenDAC);
-                HAL_Delay(1);
+			int Regen_DAC_Temp = ((i_regenADC - REGEN_MIN_ADC) * (REGEN_MAX_DAC - REGEN_MIN_DAC))
+					/ (REGEN_MAX_DAC - REGEN_MIN_ADC) + REGEN_MIN_DAC;
+
+			// Clamp DAC value to max range
+			if (Regen_DAC_Temp > REGEN_MAX_DAC) {
+				Regen_DAC_Temp = REGEN_MAX_DAC;
+			} else if (Regen_DAC_Temp < REGEN_MIN_DAC) {
+				Regen_DAC_Temp = REGEN_MIN_DAC;
+			}
+
+			o_regenDAC = REGEN_MAX_DAC - Regen_DAC_Temp;
+
+			HAL_DAC_SetValue(&hdac, DAC_CHANNEL_2, DAC_ALIGN_12B_R, o_regenDAC);
+			HAL_Delay(1);
 }
 
 void updateAuxADC(void){
@@ -738,10 +767,21 @@ void faultBlinker(void) {
 
         extraTime = currentTime;
     }
+}
 
+void brakeActives(uint16_t analogIn) {
+// REGEN ACTIVATE
+	if (analogIn >= BRAKE_POINT) {
+		HAL_GPIO_WritePin(brakeLightEnable_GPIO_Port, brakeLightEnable_Pin, SET);
+		o_brakeIndEn = SET;
+	} else{
+		HAL_GPIO_WritePin(brakeLightEnable_GPIO_Port, brakeLightEnable_Pin, RESET);
+		o_brakeIndEn = RESET;
+	}
+}
 
   /* USER CODE END 3 */
-}
+
 
 /**
   * @brief System Clock Configuration
