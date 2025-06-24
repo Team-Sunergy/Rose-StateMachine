@@ -502,8 +502,10 @@ void on_state(void){		// State 4 = DRIVING
 }
 
 void faultTemp_state(void){			// State 7
-	if (lastState == ON)
-	{
+	if (lastState == ON){
+		enterStateTime = HAL_GetTick();
+		lastState = FAULT_TEMP;
+
 		// Set fault indicator GPIO pin
 		HAL_GPIO_WritePin(faultIndicatorPort, faultIndicator, GPIO_PIN_SET);
 		o_faultIndicator = GPIO_PIN_SET;
@@ -512,13 +514,8 @@ void faultTemp_state(void){			// State 7
         HAL_GPIO_WritePin(auxDCDCDisablePort,auxDCDCDisable, GPIO_PIN_RESET);
         o_auxDCDCDisable = GPIO_PIN_RESET;
 
-		enterStateTime = HAL_GetTick();
 	}
-	lastState = FAULT_TEMP;
-
 	currentTime = HAL_GetTick();
-
-
 
     if (currentTime - enterStateTime >= 500) {
         // Reset hvDCDCEnable GPIO pin after 500ms
@@ -568,25 +565,31 @@ void charge_state(void){	// State 5
 	// Start charging routine by enabling AUX DCDC
 	if (lastState == FAULT_TEMP)
 	{
+		enterStateTime = HAL_GetTick();
+		lastState = CHARGE;
+
+		HAL_GPIO_WritePin(hvDCDCEnable_GPIO_Port, hvDCDCEnable_Pin, RESET);
+		o_hvDCDCEnable = RESET;
+
+		HAL_GPIO_WritePin(hvContactor_GPIO_Port, hvContactor_Pin, RESET);
+		o_hvContactor = RESET;
+
+		HAL_GPIO_WritePin(chargeIndicatorPort, chargeIndicator, SET);
+		o_chargeIndicator = SET;
+
         // Set auxDCDCDisable GPIO pin -> AUX-DCDC off
-        HAL_GPIO_WritePin(auxDCDCDisablePort,auxDCDCDisable, GPIO_PIN_SET);
-        o_auxDCDCDisable = GPIO_PIN_SET;
+        HAL_GPIO_WritePin(auxDCDCDisablePort,auxDCDCDisable, SET);
+        o_auxDCDCDisable = SET;
 
 		// Reset fault indicator GPIO pin
-		HAL_GPIO_WritePin(faultIndicatorPort, faultIndicator, GPIO_PIN_RESET);
-		o_faultIndicator = GPIO_PIN_RESET;
+		HAL_GPIO_WritePin(faultIndicatorPort, faultIndicator, RESET);
+		o_faultIndicator = RESET;
 
-        // Set charge indicator GPIO pin
-        HAL_GPIO_WritePin(chargeIndicatorPort, chargeIndicator, GPIO_PIN_SET);
-        o_chargeIndicator = GPIO_PIN_SET;
-
-		enterStateTime = HAL_GetTick();
 	}
-	lastState = CHARGE;
 
 	currentTime = HAL_GetTick();
 
-	if((i_keyACC != 1) || (i_chargeEnable != 1) || (i_disChargeEnable != 0)  || (i_killSwitch != 0))
+	if( (i_chargeEnable == 0 ) || (i_killSwitch != 0))
 	{
 		currentState = FAULT;
 		if (i_keyACC != 1)
@@ -754,11 +757,10 @@ void faultBlinker(void) {
     if (currentTime - extraTime >= 750) {
 
         // Toggle fault indicator GPIO pin
-        if (o_faultIndicator == GPIO_PIN_RESET) { // Checks to see if Fault Light is OFF
-
+        if (o_faultIndicator == 0) { // Checks to see if Fault Light is OFF
             // Turns on the Fault Light
-            HAL_GPIO_WritePin(faultIndicatorPort, faultIndicator, GPIO_PIN_SET);
-            o_faultIndicator = GPIO_PIN_SET;
+            HAL_GPIO_WritePin(faultIndicatorPort, faultIndicator, SET);
+            o_faultIndicator = SET;
         } else {
             // Turns off the Fault Light
             HAL_GPIO_WritePin(faultIndicatorPort, faultIndicator, GPIO_PIN_RESET);
